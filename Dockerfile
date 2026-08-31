@@ -11,7 +11,7 @@ RUN composer install \
     --prefer-dist \
     --optimize-autoloader
 
-FROM node:20-alpine AS assets
+FROM node:26-alpine AS assets
 WORKDIR /app
 COPY backend/package.json backend/vite.config.js ./
 COPY backend/resources ./resources
