@@ -1,0 +1,209 @@
+name: Mobile
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+  workflow_call:
+    inputs:
+      publish_release_artifacts:
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: mobile-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Analyze, test, and Android build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate platform folders
+        run: flutter create . --org com.syncbox --project-name syncbox --platforms android,ios
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Flutter analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Flutter tests
+        run: flutter test
+
+      - name: Build debug APK
+        run: flutter build apk --debug --dart-define=API_BASE_URL=${{ vars.API_BASE_URL || 'http://127.0.0.1:8080' }}
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-test-results
+          path: mobile/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-android-debug-apk
+          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 7
+
+  android-release:
+    name: Android release packages
+    needs: quality
+    if: ${{ github.event_name != 'pull_request' || inputs.publish_release_artifacts }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sync application version
+        working-directory: .
+        run: node scripts/sync-version.mjs
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate platform folders
+        run: flutter create . --org com.syncbox --project-name syncbox --platforms android
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Configure Android signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "${ANDROID_KEYSTORE_BASE64}" ]; then
+            echo "Android signing secrets are not configured; building unsigned release artifacts."
+            exit 0
+          fi
+          printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > android/app/release.keystore
+          python3 ../scripts/configure-android-signing.py
+
+      - name: Build APK
+        run: flutter build apk --release --dart-define=API_BASE_URL=${{ vars.API_BASE_URL || 'http://127.0.0.1:8080' }}
+
+      - name: Build App Bundle
+        run: flutter build appbundle --release --dart-define=API_BASE_URL=${{ vars.API_BASE_URL || 'http://127.0.0.1:8080' }}
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-android-apk
+          path: mobile/build/app/outputs/flutter-apk/*.apk
+          retention-days: 14
+
+      - name: Upload Android App Bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-android-aab
+          path: mobile/build/app/outputs/bundle/release/*.aab
+          retention-days: 14
+
+  ios:
+    name: iOS build
+    needs: quality
+    if: ${{ github.event_name != 'pull_request' || inputs.publish_release_artifacts }}
+    runs-on: macos-latest
+    env:
+      LANG: en_US.UTF-8
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate platform folders
+        run: flutter create . --org com.syncbox --project-name syncbox --platforms ios
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Import signing material
+        env:
+          IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          if [ -z "${IOS_CERTIFICATE_BASE64}" ]; then
+            echo "iOS signing secrets are not configured; building without codesign."
+            echo "IOS_NO_CODESIGN=true" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          mkdir -p "$HOME/certs"
+          printf '%s' "${IOS_CERTIFICATE_BASE64}" | base64 --decode > "$HOME/certs/certificate.p12"
+          printf '%s' "${IOS_PROVISIONING_PROFILE_BASE64}" | base64 --decode > "$HOME/certs/profile.mobileprovision"
+          security create-keychain -p "" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          security import "$HOME/certs/certificate.p12" -k build.keychain -P "${IOS_CERTIFICATE_PASSWORD}" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$HOME/certs/profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/"
+
+      - name: Build iOS
+        run: |
+          if [ "${IOS_NO_CODESIGN}" = "true" ]; then
+            flutter build ios --release --no-codesign --dart-define=API_BASE_URL=${{ vars.API_BASE_URL || 'http://127.0.0.1:8080' }}
+          else
+            flutter build ios --release --dart-define=API_BASE_URL=${{ vars.API_BASE_URL || 'http://127.0.0.1:8080' }}
+          fi
+
+      - name: Upload iOS build logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-ios-logs
+          path: |
+            mobile/build/ios/**/*.log
+            mobile/ios/Pods/Pods*.log
+          retention-days: 5
+          if-no-files-found: ignore

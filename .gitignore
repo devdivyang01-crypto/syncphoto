@@ -1,0 +1,55 @@
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!.env.development
+!.env.*.example
+
+# Composer local installer (never commit)
+/composer.phar
+/composer-setup.php
+
+# Logs
+*.log
+logs/
+
+# Dependencies and build outputs
+node_modules/
+vendor/
+dist/
+build/
+target/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+
+# Coverage and test artifacts
+coverage/
+.phpunit.result.cache
+.phpunit.cache/
+test-results/
+
+# Docker
+docker-data/
+
+# Local tooling
+.phpactor.json
+homestead
+Homestead.json
+Homestead.yaml
+auth.json

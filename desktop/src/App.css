@@ -1,0 +1,139 @@
+:root {
+  font-family: "Segoe UI", Inter, system-ui, sans-serif;
+  color: #e8f6f3;
+  background: #07131a;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+  background:
+    radial-gradient(circle at top, rgba(20, 184, 166, 0.18), transparent 42%),
+    linear-gradient(180deg, #0b1c24 0%, #07131a 100%);
+}
+
+.card {
+  width: min(560px, 100%);
+  background: rgba(8, 24, 32, 0.92);
+  border: 1px solid rgba(94, 234, 212, 0.18);
+  border-radius: 24px;
+  padding: 36px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-size: 12px;
+  color: #5eead4;
+}
+
+h1 {
+  margin: 0;
+  font-size: 42px;
+  line-height: 1.1;
+}
+
+.lede {
+  color: #b7c9c6;
+  margin: 12px 0 28px;
+}
+
+.meta {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 24px;
+}
+
+.meta div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+dt {
+  margin: 0;
+  color: #8aa3a0;
+}
+
+dd {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+
+.status {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 16px;
+  border-radius: 16px;
+  margin-bottom: 20px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.status p,
+.status strong {
+  margin: 0;
+}
+
+.status p {
+  margin-top: 4px;
+  color: #c5d5d2;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: 6px;
+  background: #64748b;
+}
+
+.status-ok .status-dot {
+  background: #34d399;
+}
+
+.status-error .status-dot {
+  background: #fb7185;
+}
+
+.status-loading .status-dot,
+.status-idle .status-dot {
+  background: #fbbf24;
+}
+
+button {
+  appearance: none;
+  border: 0;
+  border-radius: 12px;
+  padding: 12px 16px;
+  background: #14b8a6;
+  color: #06201c;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}

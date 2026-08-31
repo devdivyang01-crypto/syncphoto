@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  validate-version:
+    name: Validate version tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Confirm tag matches VERSION
+        id: version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          FILE_VERSION="$(tr -d '[:space:]' < VERSION)"
+          if [ "$TAG" != "$FILE_VERSION" ]; then
+            echo "Tag v$TAG does not match VERSION file ($FILE_VERSION)."
+            echo "Update VERSION and run node scripts/sync-version.mjs before tagging."
+            exit 1
+          fi
+          echo "version=$TAG" >> "$GITHUB_OUTPUT"
+
+  backend:
+    needs: validate-version
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/backend.yml
+
+  desktop:
+    needs: validate-version
+    permissions:
+      contents: read
+    uses: ./.github/workflows/desktop.yml
+    secrets: inherit
+    with:
+      publish_release_artifacts: true
+
+  mobile:
+    needs: validate-version
+    permissions:
+      contents: read
+    uses: ./.github/workflows/mobile.yml
+    secrets: inherit
+    with:
+      publish_release_artifacts: true
+
+  github-release:
+    name: Create GitHub Release
+    needs: [validate-version, backend, desktop, mobile]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Stage release assets
+        run: |
+          mkdir -p release-assets
+          copy_one() {
+            local pattern="$1"
+            local destination="$2"
+            local match
+            match="$(find artifacts -type f -iname "$pattern" ! -iname "*debug*" | head -n 1 || true)"
+            if [ -z "$match" ]; then
+              match="$(find artifacts -type f -iname "$pattern" | head -n 1 || true)"
+            fi
+            if [ -n "$match" ]; then
+              cp "$match" "release-assets/$destination"
+            fi
+          }
+          copy_one "*.exe" "SyncBox-Windows.exe"
+          copy_one "*.msi" "SyncBox-Windows.msi"
+          copy_one "*.dmg" "SyncBox-macOS.dmg"
+          copy_one "*.AppImage" "SyncBox-Linux.AppImage"
+          copy_one "*.deb" "SyncBox-Linux.deb"
+          copy_one "*.apk" "SyncBox-Android.apk"
+          ls -la release-assets
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: SyncBox v${{ needs.validate-version.outputs.version }}
+          generate_release_notes: true
+          files: release-assets/*
+          fail_on_unmatched_files: false
